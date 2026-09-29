@@ -164,6 +164,32 @@ stellar_invoke "$MARKET_FACTORY_ADDRESS" update_market_wasm \
     --new-wasm-hash "$MARKET_WASM_HASH"
 echo "  Market wasm hash registered with factory"
 
+# ── 4b. Verify WASM hash integrity ───────────────────────────────────────────
+# After upload, compute the local SHA-256 and compare it to the hash that the
+# network stored.  A mismatch indicates silent upload corruption; we abort so
+# the corrupted binary is never used in production.
+echo "[4b] Verifying WASM hash integrity..."
+LOCAL_SHA256=$(sha256sum "${BUILD_DIR}/boxmeout_market.wasm" | awk '{print $1}')
+INSPECT_HASH=$(SOROBAN_RPC_URL="$STELLAR_RPC_URL" stellar contract inspect \
+    --wasm-hash "$MARKET_WASM_HASH" \
+    --network "$NETWORK" 2>&1 | grep -oE '[a-f0-9]{64}' | head -1)
+
+if [[ -z "$INSPECT_HASH" ]]; then
+    echo "ERROR: Could not retrieve WASM hash from network for verification" >&2
+    echo "  Ensure the RPC endpoint is reachable and the upload completed successfully." >&2
+    exit 1
+fi
+
+if [[ "$LOCAL_SHA256" != "$INSPECT_HASH" ]]; then
+    echo "ERROR: WASM hash mismatch — upload may be corrupted!" >&2
+    echo "  Local  SHA-256 : $LOCAL_SHA256" >&2
+    echo "  Network hash   : $INSPECT_HASH" >&2
+    echo "  Aborting deployment to prevent a corrupted binary from being registered." >&2
+    exit 1
+fi
+
+echo "  WASM hash verified OK: $LOCAL_SHA256"
+
 # ── 5. Save deployments.json ──────────────────────────────────────────────────
 echo "[5/5] Writing deployments.json..."
 DEPLOYED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
