@@ -62,6 +62,8 @@ pub enum ContractError {
     BelowMinimum = 26,
     /// Amount must be positive and non-zero
     InvalidAmount = 27,
+    /// Bet would exceed the bettor's configured share of the market pool
+    BetLimitExceeded = 28,
 
     // ── Oracle / Resolution ────────────────────────────────
     /// Oracle signature verification failed

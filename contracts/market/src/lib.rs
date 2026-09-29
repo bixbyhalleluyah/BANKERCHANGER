@@ -140,6 +140,17 @@ impl Market {
             .extend_ttl(&key, MAX_TTL, MAX_TTL);
     }
 
+    fn exceeds_bet_share_cap(user_total: i128, pool_total: i128, cap_bps: u32) -> bool {
+        if pool_total <= 0 {
+            return false;
+        }
+
+        let cap_bps = i128::from(cap_bps);
+        let max_user_total = (pool_total / 10_000) * cap_bps
+            + ((pool_total % 10_000) * cap_bps) / 10_000;
+        user_total > max_user_total
+    }
+
     fn is_oracle_whitelisted(env: &Env, caller: &Address) -> Result<bool, ContractError> {
         let factory: Address = env
             .storage()
@@ -277,7 +288,8 @@ impl Market {
     /// - `MarketNotOpen`: Market is not open or fight is in the past
     /// - `InvalidTimeRange`: Betting window has not opened or deadline is invalid
     /// - `BetTooLow`: Bet amount is below minimum
-    /// - `BetTooLarge`: Bet amount exceeds the bettor's remaining market limit
+    /// - `BetTooLarge`: Bet amount exceeds the per-bet maximum
+    /// - `BetLimitExceeded`: Bet would exceed the bettor's maximum share of the pool
     /// - `SlippageExceeded`: Computed AMM shares are below `min_shares_out`
     ///
     /// # Security (CEI enforced)
@@ -321,11 +333,17 @@ impl Market {
         }
 
         let mut bets = Self::load_bets(&env, &bettor);
-        let total_bet = bets
+        let user_total = bets
             .iter()
             .fold(0i128, |total, bet| total.saturating_add(bet.amount));
-        if amount > state.config.max_bet.saturating_sub(total_bet) {
-            return Err(ContractError::BetTooLarge);
+        let user_total_after_bet = user_total.saturating_add(amount);
+        let pool_total_after_bet = state.total_pool.saturating_add(amount);
+        if Self::exceeds_bet_share_cap(
+            user_total_after_bet,
+            pool_total_after_bet,
+            state.config.max_bet_share_bps,
+        ) {
+            return Err(ContractError::BetLimitExceeded);
         }
 
         // Slippage / price-impact sanity check.
