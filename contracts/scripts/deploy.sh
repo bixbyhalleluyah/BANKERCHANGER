@@ -164,6 +164,32 @@ stellar_invoke "$MARKET_FACTORY_ADDRESS" update_market_wasm \
     --new-wasm-hash "$MARKET_WASM_HASH"
 echo "  Market wasm hash registered with factory"
 
+# ── 4b. Verify WASM hash integrity after upload ───────────────────────────────
+echo "[4b/5] Verifying WASM hash integrity..."
+LOCAL_WASM_SHA256=$(sha256sum "${BUILD_DIR}/boxmeout_market.wasm" | awk '{print $1}')
+
+# stellar contract inspect returns the on-chain hash for the uploaded wasm
+INSPECT_HASH=$(SOROBAN_RPC_URL="$STELLAR_RPC_URL" stellar contract inspect \
+    --wasm-hash "$MARKET_WASM_HASH" \
+    --network "$NETWORK" 2>&1 | grep -oE '[a-f0-9]{64}' | head -1 || true)
+
+if [[ -z "$INSPECT_HASH" ]]; then
+    echo "  WARNING: stellar contract inspect did not return a hash; using local SHA-256 for comparison" >&2
+    INSPECT_HASH="$LOCAL_WASM_SHA256"
+fi
+
+if [[ "$LOCAL_WASM_SHA256" != "$MARKET_WASM_HASH" ]]; then
+    echo "" >&2
+    echo "ERROR: WASM hash verification failed!" >&2
+    echo "  Hash returned by upload: $MARKET_WASM_HASH" >&2
+    echo "  Local SHA-256:           $LOCAL_WASM_SHA256" >&2
+    echo "  On-chain inspect hash:   $INSPECT_HASH" >&2
+    echo "" >&2
+    echo "The uploaded WASM may be corrupt or the upload was incomplete. Deployment aborted." >&2
+    exit 1
+fi
+echo "  WASM hash verified OK: $MARKET_WASM_HASH"
+
 # ── 5. Save deployments.json ──────────────────────────────────────────────────
 echo "[5/5] Writing deployments.json..."
 DEPLOYED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
