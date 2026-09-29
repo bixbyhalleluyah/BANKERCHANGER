@@ -50,7 +50,7 @@ pub enum ContractError {
     BetTooLow = 20,
     /// Transfer amount is insufficient for the requested operation
     InsufficientAmount = 21,
-    /// Bettor has already placed a bet in this market
+    /// Legacy error code retained for compatibility; multiple bets are now allowed
     AlreadyBet = 22,
     /// Bettor has already claimed winnings or refund
     AlreadyClaimed = 23,

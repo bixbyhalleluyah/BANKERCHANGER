@@ -100,7 +100,7 @@ pub struct FightDetails {
 pub struct MarketConfig {
     /// Minimum bet in stroops (1 XLM = 10_000_000 stroops)
     pub min_bet_amount: i128,
-    /// Maximum single bet in stroops
+    /// Maximum cumulative stake per bettor in this market, in stroops
     pub max_bet: i128,
     /// Platform fee in basis points (200 = 2%)
     pub fee_bps: u32,

@@ -2236,6 +2236,67 @@ mod bet_timing_lock_tests {
         assert!(result.is_ok(), "Bet before lock threshold must succeed");
     }
 
+    /// A bettor may split their stake across bets, up to the cumulative market cap.
+    #[test]
+    fn test_multiple_bets_allowed_up_to_cumulative_market_cap() {
+        let lock_threshold = SCHEDULED_AT - LOCK_BEFORE_SECS;
+        let env = Env::default();
+        let (client, _contract_id, _factory, token_id) = setup(&env, lock_threshold - 1);
+        let bettor = Address::generate(&env);
+        soroban_sdk::token::StellarAssetClient::new(&env, &token_id)
+            .mint(&bettor, &100_000_000_000i128);
+
+        client.place_bet(
+            &bettor,
+            &BetSide::FighterA,
+            &60_000_000_000i128,
+            &token_id,
+            &0i128,
+        );
+        client.place_bet(
+            &bettor,
+            &BetSide::FighterB,
+            &40_000_000_000i128,
+            &token_id,
+            &0i128,
+        );
+
+        assert_eq!(client.get_bets_by_address(&bettor).len(), 2);
+        assert_eq!(client.get_state().total_pool, 100_000_000_000i128);
+    }
+
+    /// A repeat bet that would exceed the cumulative cap is rejected without mutation.
+    #[test]
+    fn test_multiple_bets_cannot_exceed_cumulative_market_cap() {
+        use boxmeout_shared::errors::ContractError;
+
+        let lock_threshold = SCHEDULED_AT - LOCK_BEFORE_SECS;
+        let env = Env::default();
+        let (client, _contract_id, _factory, token_id) = setup(&env, lock_threshold - 1);
+        let bettor = Address::generate(&env);
+        soroban_sdk::token::StellarAssetClient::new(&env, &token_id)
+            .mint(&bettor, &100_000_000_001i128);
+
+        client.place_bet(
+            &bettor,
+            &BetSide::FighterA,
+            &60_000_000_000i128,
+            &token_id,
+            &0i128,
+        );
+        let result = client.try_place_bet(
+            &bettor,
+            &BetSide::FighterB,
+            &40_000_000_001i128,
+            &token_id,
+            &0i128,
+        );
+
+        assert_eq!(result.unwrap_err(), Ok(ContractError::BetTooLarge));
+        assert_eq!(client.get_bets_by_address(&bettor).len(), 1);
+        assert_eq!(client.get_state().total_pool, 60_000_000_000i128);
+    }
+
     /// Bets placed exactly at the lock threshold must return BettingClosed.
     #[test]
     fn test_bet_at_exact_threshold_returns_betting_closed() {

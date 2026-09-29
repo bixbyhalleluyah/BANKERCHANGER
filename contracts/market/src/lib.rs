@@ -277,7 +277,7 @@ impl Market {
     /// - `MarketNotOpen`: Market is not open or fight is in the past
     /// - `InvalidTimeRange`: Betting window has not opened or deadline is invalid
     /// - `BetTooLow`: Bet amount is below minimum
-    /// - `BetTooLarge`: Bet amount exceeds maximum
+    /// - `BetTooLarge`: Bet amount exceeds the bettor's remaining market limit
     /// - `SlippageExceeded`: Computed AMM shares are below `min_shares_out`
     ///
     /// # Security (CEI enforced)
@@ -317,6 +317,14 @@ impl Market {
             return Err(ContractError::BelowMinimum);
         }
         if amount > state.config.max_bet {
+            return Err(ContractError::BetTooLarge);
+        }
+
+        let mut bets = Self::load_bets(&env, &bettor);
+        let total_bet = bets
+            .iter()
+            .fold(0i128, |total, bet| total.saturating_add(bet.amount));
+        if amount > state.config.max_bet.saturating_sub(total_bet) {
             return Err(ContractError::BetTooLarge);
         }
 
@@ -399,11 +407,7 @@ impl Market {
             claimed: false,
         };
 
-        let mut bets = Self::load_bets(&env, &bettor);
-        if !bets.is_empty() {
-            return Err(ContractError::AlreadyBet);
-        }
-        let is_first_bet = true;
+        let is_first_bet = bets.is_empty();
         bets.push_back(bet.clone());
         Self::save_bets(&env, &bettor, &bets);
 
